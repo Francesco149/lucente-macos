@@ -168,7 +168,7 @@ Packages/LucenteKit/
   Tests/                  Swift Testing suites for every encoder and parser
 Config/                   xcconfig build settings + entitlements (sandboxed, Bluetooth only)
 docs/                     protocol specs, the dual-mode bars investigation, images
-scripts/                  probe wrapper, DMG packager, release script, hero image generator
+scripts/                  probe wrapper, DMG packager, release + signing setup, hero image generator
 .github/workflows/        CI (tests + DMG artifact) and tag-triggered releases
 ```
 
@@ -182,9 +182,10 @@ make release BUMP=patch     # or minor, major, or an explicit 1.4.0 / 2.0.0-beta
 That runs the tests, bumps the version, commits, tags `vX.Y.Z` and pushes. The tag triggers the
 [release workflow](.github/workflows/release.yml), which builds the universal DMG and publishes
 it with release notes; a `-suffix` version becomes a pre-release. Every push and pull request
-also gets a DMG as a [CI](.github/workflows/ci.yml) artifact. Adding a Developer ID certificate
-and an App Store Connect API key as repository secrets (listed at the top of the release
-workflow) makes releases signed and notarized, with no Gatekeeper prompt.
+also gets a DMG as a [CI](.github/workflows/ci.yml) artifact. To make releases signed and
+notarized (no Gatekeeper prompt), add a Developer ID certificate and an App Store Connect API key
+as repository secrets — [docs/signing.md](docs/signing.md) walks through it, and
+`scripts/setup-signing` does the exporting, checking and storing.
 
 ## Diagnosing a light
 

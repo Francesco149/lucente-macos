@@ -4,7 +4,8 @@ name: Release
 # release. Versions with a pre-release suffix (v1.2.0-beta.1) are marked as pre-releases.
 #
 # Signing is optional. With these repository secrets the app and DMG are signed with a
-# Developer ID certificate and notarized, so they open without warnings:
+# Developer ID certificate and notarized, so they open without warnings (set them up with
+# scripts/setup-signing; walkthrough in docs/signing.md):
 #   MACOS_CERTIFICATE_P12        base64 of the exported "Developer ID Application" .p12
 #   MACOS_CERTIFICATE_PASSWORD   its export password
 #   APPLE_TEAM_ID                the 10-character team ID
@@ -114,7 +115,11 @@ jobs:
             echo
           } > "$RUNNER_TEMP/notes.md"
           if gh release view "$TAG" > /dev/null 2>&1; then
+            # A rebuild (workflow_dispatch): replace the files and refresh the notes, e.g. once
+            # signing is set up, so the "Open Anyway" instructions go away.
             gh release upload "$TAG" "$DMG" "$DMG.sha256" --clobber
+            generated=$(gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" -q .body)
+            gh release edit "$TAG" --notes "$(cat "$RUNNER_TEMP/notes.md"; echo "$generated")"
           else
             prerelease=""
             case "$VERSION" in *-*) prerelease="--prerelease" ;; esac

@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# One-time setup for signed, notarized releases (walkthrough: docs/signing.md).
+#
+# Exports your "Developer ID Application" certificate with its private key, checks it can sign
+# the way CI will use it, checks the App Store Connect API key against Apple's notary service,
+# and stores everything as GitHub Actions secrets of this repository. Nothing secret is printed.
+#
+#   scripts/setup-signing --key ~/Downloads/AuthKey_ABC123DEFG.p8 --issuer <issuer UUID>
+#
+#   --key PATH       the API key file downloaded from App Store Connect
+#   --issuer UUID    the issuer ID shown above the keys list in App Store Connect
+#   --key-id ID      the key ID (default: taken from the AuthKey_<ID>.p8 file name)
+#   --keychain PATH  where the certificate is (default: your login keychain)
+#   --dry-run        do every check, but don't store the secrets
+#
+# macOS asks for your login password once per signing identity it exports: the export includes
+# every identity in the keychain, and only the Developer ID one is kept.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+die() { echo "setup-signing: $*" >&2; exit 1; }
+step() { echo "• $*"; }
+
+p8= key_id= issuer= dry_run=false
+keychain="$HOME/Library/Keychains/login.keychain-db"
+while [ $# -gt 0 ]; do
+  case $1 in
+    --key) p8=$2; shift 2 ;;
+    --key-id) key_id=$2; shift 2 ;;
+    --issuer) issuer=$2; shift 2 ;;
+    --keychain) keychain=$2; shift 2 ;;
+    --dry-run) dry_run=true; shift ;;
+    -h | --help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) die "unknown option $1 (see --help)" ;;
+  esac
+done
+[ -n "$p8" ] && [ -n "$issuer" ] || die "usage: scripts/setup-signing --key AuthKey_XXXX.p8 --issuer UUID [--key-id ID] [--dry-run]"
+[ -f "$p8" ] || die "no such key file: $p8"
+[ -n "$key_id" ] || key_id=$(basename "$p8" | sed -n 's/^AuthKey_\([A-Z0-9]*\)\.p8$/\1/p')
+[ -n "$key_id" ] || die "couldn't tell the key ID from the file name; pass --key-id"
+openssl=/usr/bin/openssl # LibreSSL: reads the keychain's legacy PKCS#12 encryption as-is
+
+$dry_run || repo=$(gh repo view --json nameWithOwner -q .nameWithOwner) || die "gh can't see this repository (gh auth login?)"
+
+work=$(mktemp -d)
+trap 'security delete-keychain "$work/check.keychain-db" 2>/dev/null || true; rm -rf "$work"' EXIT
+
+# 1. Find the Developer ID Application identity.
+identities=$(security find-identity -p codesigning "$keychain" | sed -n 's/^ *[0-9]*) \([0-9A-F]\{40\}\) "\(Developer ID Application: [^"]*\)".*$/\1 \2/p' | sort -u)
+[ -n "$identities" ] || die "no \"Developer ID Application\" certificate in $keychain — create one first (docs/signing.md, step 1)"
+sha1=${identities%% *}
+name=$(printf '%s\n' "$identities" | head -1 | cut -d' ' -f2-)
+team_id=$(printf '%s' "$name" | sed -n 's/.*(\([A-Z0-9]\{10\}\))$/\1/p')
+[ -n "$team_id" ] || die "couldn't read the team ID from \"$name\""
+step "certificate: $name"
+[ "$(printf '%s\n' "$identities" | wc -l | tr -d ' ')" = 1 ] || echo "  (several found; using the first — remove expired ones in Keychain Access)"
+valid=true
+security find-identity -v -p codesigning "$keychain" | grep -q "$sha1" || valid=false
+$valid || echo "  warning: macOS doesn't consider it valid right now (expired, revoked or untrusted); CI signing will fail"
+
+# 2. Export every identity, then keep only this certificate and the private key that matches it.
+export_pass=$($openssl rand -hex 24)
+security export -k "$keychain" -t identities -f pkcs12 -P "$export_pass" -o "$work/all.p12" >/dev/null 2>"$work/export.err" \
+  || die "export failed (did you deny the keychain prompt?): $(tail -1 "$work/export.err")"
+EXPORT_PASS=$export_pass $openssl pkcs12 -in "$work/all.p12" -passin env:EXPORT_PASS -nodes -out "$work/all.pem" 2>/dev/null
+awk -v dir="$work" '/^-----BEGIN /{n++; f=sprintf("%s/block%03d.pem", dir, n)} f{print > f} /^-----END /{close(f); f=""}' "$work/all.pem"
+cert= key=
+for block in "$work"/block*.pem; do
+  if grep -q 'BEGIN CERTIFICATE' "$block"; then
+    fingerprint=$($openssl x509 -in "$block" -noout -fingerprint -sha1 | sed 's/.*=//; s/://g')
+    [ "$fingerprint" = "$sha1" ] && cert=$block
+  fi
+done
+[ -n "$cert" ] || die "the exported certificates didn't include $name"
+cert_pub=$($openssl x509 -in "$cert" -noout -pubkey)
+for block in "$work"/block*.pem; do
+  if grep -q 'PRIVATE KEY' "$block" && [ "$($openssl pkey -in "$block" -pubout 2>/dev/null)" = "$cert_pub" ]; then key=$block; fi
+done
+[ -n "$key" ] || die "the private key for $name isn't in this keychain — export it from the Mac that created the certificate"
+
+# Include Apple's Developer ID intermediates so CI can build the full chain.
+security find-certificate -a -c "Developer ID Certification Authority" -p > "$work/chain.pem" 2>/dev/null || true
+if ! grep -q 'BEGIN CERTIFICATE' "$work/chain.pem"; then
+  curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer | $openssl x509 -inform der > "$work/chain.pem" \
+    || die "couldn't get Apple's Developer ID intermediate certificate"
+fi
+
+p12_pass=$($openssl rand -hex 24)
+P12_PASS=$p12_pass $openssl pkcs12 -export -inkey "$key" -in "$cert" -certfile "$work/chain.pem" \
+  -name "$name" -passout env:P12_PASS -out "$work/developer-id.p12"
+rm -f "$work"/block*.pem "$work/all.pem" "$work/all.p12"
+step "exported the certificate and its private key"
+
+# 3. Import it the way the release workflow does, and sign something with it.
+security create-keychain -p "" "$work/check.keychain-db"
+security unlock-keychain -p "" "$work/check.keychain-db"
+security import "$work/developer-id.p12" -k "$work/check.keychain-db" -P "$p12_pass" -T /usr/bin/codesign >/dev/null
+security set-key-partition-list -S apple-tool:,apple: -s -k "" "$work/check.keychain-db" >/dev/null
+security find-identity -p codesigning "$work/check.keychain-db" | grep -q "$sha1" \
+  || die "the exported file doesn't contain a usable identity"
+if $valid; then
+  cp /usr/bin/true "$work/probe-binary"
+  codesign --force --sign "$sha1" --keychain "$work/check.keychain-db" "$work/probe-binary" \
+    || die "the exported identity couldn't sign"
+  step "signing with it works"
+else
+  step "the identity imports cleanly (signing test skipped: it isn't valid)"
+fi
+
+# 4. Check the API key against the notary service.
+xcrun notarytool history --key "$p8" --key-id "$key_id" --issuer "$issuer" >/dev/null 2>"$work/notary.err" \
+  || die "Apple rejected the API key: $(tail -1 "$work/notary.err")"
+step "notary service accepts API key $key_id"
+
+# 5. Store the secrets.
+if $dry_run; then
+  step "dry run: everything checks out; nothing stored"
+  exit 0
+fi
+put() { gh secret set "$1" -R "$repo" >/dev/null; }
+base64 -i "$work/developer-id.p12" | put MACOS_CERTIFICATE_P12
+printf '%s' "$p12_pass" | put MACOS_CERTIFICATE_PASSWORD
+printf '%s' "$team_id" | put APPLE_TEAM_ID
+base64 -i "$p8" | put NOTARY_KEY_P8
+printf '%s' "$key_id" | put NOTARY_KEY_ID
+printf '%s' "$issuer" | put NOTARY_ISSUER_ID
+step "stored 6 secrets in $repo"
+echo
+echo "Releases from now on are signed and notarized. To redo the latest one:"
+echo "  gh workflow run release.yml -f tag=$(git describe --tags --abbrev=0 2>/dev/null || echo vX.Y.Z)"

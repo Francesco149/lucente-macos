@@ -17,6 +17,8 @@ Releases: semver in `MARKETING_VERSION` (Config/Lucente.xcconfig), build number 
 `make release` bumps, commits, tags `vX.Y.Z` and pushes; `.github/workflows/release.yml` builds the
 DMG on `macos-26` and publishes it (Developer ID signing + notarization only if the secrets listed
 in that file exist; otherwise ad hoc). `ci.yml` tests + builds a DMG artifact on every push/PR.
+`scripts/setup-signing` (docs/signing.md) exports the Developer ID identity, verifies it and the
+notary key, and stores the secrets (tested up to the notary check with a throwaway keychain of fake identities).
 
 `xcodebuild … test` / ⌘U runs the same package tests through the shared scheme.
 
