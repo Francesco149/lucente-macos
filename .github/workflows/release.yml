@@ -1,0 +1,123 @@
+name: Release
+
+# Pushing a vX.Y.Z tag (see `make release`) builds the universal DMG and publishes it as a GitHub
+# release. Versions with a pre-release suffix (v1.2.0-beta.1) are marked as pre-releases.
+#
+# Signing is optional. With these repository secrets the app and DMG are signed with a
+# Developer ID certificate and notarized, so they open without warnings:
+#   MACOS_CERTIFICATE_P12        base64 of the exported "Developer ID Application" .p12
+#   MACOS_CERTIFICATE_PASSWORD   its export password
+#   APPLE_TEAM_ID                the 10-character team ID
+#   NOTARY_KEY_P8                base64 of an App Store Connect API key (.p8)
+#   NOTARY_KEY_ID, NOTARY_ISSUER_ID   that key's ID and issuer
+# Without them the build is signed ad hoc, and the release notes explain how to open it.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to rebuild, e.g. v1.0.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0 # the build number is the commit count
+
+      - name: Check the tag matches the version
+        run: |
+          version=$(make -s version)
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::Tag $TAG doesn't match MARKETING_VERSION $version in Config/Lucente.xcconfig (use make release)"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "DMG=.build/dist/Lucente-$version.dmg" >> "$GITHUB_ENV"
+
+      - name: Which signing is configured
+        id: caps
+        run: |
+          echo "sign=${{ secrets.MACOS_CERTIFICATE_P12 != '' }}" >> "$GITHUB_OUTPUT"
+          echo "notarize=${{ secrets.MACOS_CERTIFICATE_P12 != '' && secrets.NOTARY_KEY_P8 != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: make test
+
+      - name: Import the Developer ID certificate
+        if: steps.caps.outputs.sign == 'true'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "" "$keychain"
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)
+          [ -n "$identity" ] || { echo "::error::No Developer ID Application identity in the certificate"; exit 1; }
+          echo "SIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
+      - name: Build the DMG
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: make dmg
+
+      - name: Notarize
+        if: steps.caps.outputs.notarize == 'true'
+        env:
+          KEY: ${{ secrets.NOTARY_KEY_P8 }}
+          KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          echo "$KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          xcrun notarytool submit "$DMG" --key "$RUNNER_TEMP/notary.p8" --key-id "$KEY_ID" --issuer "$ISSUER" --wait
+          xcrun stapler staple "$DMG"
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTARIZED: ${{ steps.caps.outputs.notarize }}
+        run: |
+          (cd "$(dirname "$DMG")" && shasum -a 256 "$(basename "$DMG")" > "$(basename "$DMG").sha256")
+          {
+            echo "### Install"
+            echo
+            echo "Download **$(basename "$DMG")**, open it and drag **Lucente** into **Applications**. Requires macOS 26 (Apple silicon or Intel)."
+            if [ "$NOTARIZED" != "true" ]; then
+              echo
+              echo "This build is signed ad hoc, not notarized, so macOS can't verify who made it. The first time you open Lucente, macOS refuses: go to **System Settings › Privacy & Security**, scroll down and click **Open Anyway** (only needed once). Or, in Terminal:"
+              echo
+              echo '```'
+              echo 'xattr -dr com.apple.quarantine /Applications/Lucente.app'
+              echo '```'
+            fi
+            echo
+            echo "SHA-256: \`$(cut -d' ' -f1 "$DMG.sha256")\`"
+            echo
+          } > "$RUNNER_TEMP/notes.md"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$DMG" "$DMG.sha256" --clobber
+          else
+            prerelease=""
+            case "$VERSION" in *-*) prerelease="--prerelease" ;; esac
+            gh release create "$TAG" "$DMG" "$DMG.sha256" --title "Lucente $VERSION" \
+              --notes "$(cat "$RUNNER_TEMP/notes.md")" --generate-notes --verify-tag $prerelease
+          fi

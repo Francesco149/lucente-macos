@@ -1,6 +1,8 @@
 <p align="center"><img src="docs/images/hero.png" alt="Lucente for macOS: the main window and the menu bar panel controlling six Bluetooth LED lights"></p>
 
 <p align="center">
+  <a href="https://github.com/Francesco149/lucente-macos/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Francesco149/lucente-macos?sort=semver"></a>
+  <a href="https://github.com/Francesco149/lucente-macos/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Francesco149/lucente-macos/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="macOS 26+" src="https://img.shields.io/badge/macOS-26%2B-black?logo=apple">
   <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white">
   <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-none-brightgreen">
@@ -108,7 +110,19 @@ acknowledge writes).
 
 ## Install
 
-Requires **macOS 26** and **Xcode 26** or newer. Nothing else.
+1. Download **Lucente-x.y.z.dmg** from the [latest release](https://github.com/Francesco149/lucente-macos/releases/latest).
+2. Open it and drag **Lucente** into **Applications**. It runs on macOS 26, on Apple silicon and Intel.
+3. The first launch asks for Bluetooth access. Turn the lights on nearby and they appear on their own.
+
+Releases are currently signed ad hoc rather than notarized, so the first time you open Lucente
+macOS says it can't verify the developer. Go to **System Settings › Privacy & Security**, scroll
+down and click **Open Anyway** — only needed once. Or, in Terminal:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Lucente.app
+```
+
+**From source** (Xcode 26 or newer, nothing else):
 
 ```bash
 git clone https://github.com/Francesco149/lucente-macos.git
@@ -116,14 +130,13 @@ cd lucente-macos
 make install        # Release build into /Applications
 ```
 
-The first launch asks for Bluetooth access. Turn the lights on nearby and they appear on their own.
-
 ## Develop
 
 ```bash
 make run            # build Debug and (re)launch
 make test           # protocol/driver test suite, ~2 s, no hardware needed
 make logs           # stream the app's unified log, Bluetooth traffic included
+make dmg            # universal Release DMG into .build/dist
 make open           # open in Xcode (⌘R runs, ⌘U tests)
 make                # list everything
 ```
@@ -155,8 +168,23 @@ Packages/LucenteKit/
   Tests/                  Swift Testing suites for every encoder and parser
 Config/                   xcconfig build settings + entitlements (sandboxed, Bluetooth only)
 docs/                     protocol specs, the dual-mode bars investigation, images
-scripts/                  probe wrapper, hero image generator
+scripts/                  probe wrapper, DMG packager, release script, hero image generator
+.github/workflows/        CI (tests + DMG artifact) and tag-triggered releases
 ```
+
+**Releasing.** Versions follow [semantic versioning](https://semver.org); the version lives in
+`MARKETING_VERSION` in `Config/Lucente.xcconfig` and the build number is the commit count.
+
+```bash
+make release BUMP=patch     # or minor, major, or an explicit 1.4.0 / 2.0.0-beta.1
+```
+
+That runs the tests, bumps the version, commits, tags `vX.Y.Z` and pushes. The tag triggers the
+[release workflow](.github/workflows/release.yml), which builds the universal DMG and publishes
+it with release notes; a `-suffix` version becomes a pre-release. Every push and pull request
+also gets a DMG as a [CI](.github/workflows/ci.yml) artifact. Adding a Developer ID certificate
+and an App Store Connect API key as repository secrets (listed at the top of the release
+workflow) makes releases signed and notarized, with no Gatekeeper prompt.
 
 ## Diagnosing a light
 

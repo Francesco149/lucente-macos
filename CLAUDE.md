@@ -10,7 +10,13 @@ Swift 6 + SwiftUI + CoreBluetooth, macOS 26+, zero third-party dependencies. Por
 make run      build + relaunch the app        make test    swift test (31 tests, ~2 s)
 make build    CONFIG=Release for optimized    make logs    unified log stream
 make probe ARGS="scan|inspect <id>|write <id> <char> <hex>…|classic"   raw BLE workbench
+make dmg      universal Release DMG           make release BUMP=patch|minor|major|X.Y.Z
 ```
+
+Releases: semver in `MARKETING_VERSION` (Config/Lucente.xcconfig), build number = commit count.
+`make release` bumps, commits, tags `vX.Y.Z` and pushes; `.github/workflows/release.yml` builds the
+DMG on `macos-26` and publishes it (Developer ID signing + notarization only if the secrets listed
+in that file exist; otherwise ad hoc). `ci.yml` tests + builds a DMG artifact on every push/PR.
 
 `xcodebuild … test` / ⌘U runs the same package tests through the shared scheme.
 

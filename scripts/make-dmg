@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Package an app bundle into a compressed, drag-to-install disk image.
+#
+#   scripts/make-dmg <path/to/Lucente.app> <out.dmg> [signing identity]
+#
+# The image holds the app and an Applications link, and carries the app's icon as its volume
+# icon. With a signing identity (e.g. "Developer ID Application: …") the image itself is signed
+# too, ready for notarization; without one it's left unsigned, like the ad hoc app inside.
+set -euo pipefail
+
+app=${1:?usage: scripts/make-dmg <app> <out.dmg> [identity]}
+out=${2:?usage: scripts/make-dmg <app> <out.dmg> [identity]}
+identity=${3:-}
+plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$app/Contents/Info.plist"; }
+name=$(plist CFBundleName)
+version=$(plist CFBundleShortVersionString)
+
+work=$(mktemp -d)
+trap 'hdiutil detach -quiet "$work/mnt" 2>/dev/null || true; rm -rf "$work"' EXIT
+mkdir -p "$work/stage" "$work/mnt" "$(dirname "$out")"
+
+ditto "$app" "$work/stage/$(basename "$app")"
+ln -s /Applications "$work/stage/Applications"
+cp "$app/Contents/Resources/AppIcon.icns" "$work/stage/.VolumeIcon.icns"
+
+# Build read-write first so the volume can be flagged as having a custom icon, then compress.
+hdiutil create -quiet -volname "$name $version" -srcfolder "$work/stage" -fs HFS+ -format UDRW -ov "$work/rw.dmg"
+hdiutil attach -quiet -readwrite -noverify -noautoopen -mountpoint "$work/mnt" "$work/rw.dmg"
+if setfile=$(xcrun --find SetFile 2>/dev/null); then
+  "$setfile" -a C "$work/mnt"
+fi
+rm -rf "$work/mnt/.fseventsd"
+hdiutil detach -quiet "$work/mnt"
+rm -f "$out"
+hdiutil convert -quiet "$work/rw.dmg" -format UDZO -imagekey zlib-level=9 -o "$out"
+
+if [ -n "$identity" ]; then
+  codesign --force --sign "$identity" --timestamp "$out"
+fi
+echo "$out ($(du -h "$out" | cut -f1 | tr -d ' '))"

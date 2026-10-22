@@ -1,0 +1,42 @@
+name: CI
+
+# Every push to main and every pull request: run the tests and build the DMG, which is kept as a
+# workflow artifact for trying out a change before it's released.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the build number is the commit count
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Test
+        run: make test
+
+      - name: Build DMG
+        id: dmg
+        run: |
+          make dmg
+          echo "version=$(make -s version)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Lucente-${{ steps.dmg.outputs.version }}-${{ github.sha }}
+          path: .build/dist/*.dmg
+          if-no-files-found: error
