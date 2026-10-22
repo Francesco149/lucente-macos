@@ -1,0 +1,39 @@
+{
+  "fill" : {
+    "automatic-gradient" : "extended-srgb:0.09000,0.07000,0.20000,1.00000"
+  },
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "glass" : true,
+          "image-name" : "bar-left.svg",
+          "name" : "bar-left"
+        },
+        {
+          "glass" : true,
+          "image-name" : "bar-middle.svg",
+          "name" : "bar-middle"
+        },
+        {
+          "glass" : true,
+          "image-name" : "bar-right.svg",
+          "name" : "bar-right"
+        }
+      ],
+      "shadow" : {
+        "kind" : "layer-color",
+        "opacity" : 0.6
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.25
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : [
+      "macOS"
+    ]
+  }
+}
