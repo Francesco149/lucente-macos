@@ -88,9 +88,28 @@ jobs:
           KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           ISSUER: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
+          # Catch what the notary service would reject before waiting minutes for its verdict.
+          app=.build/xcode/Build/Products/Release/Lucente.app
+          codesign --verify --strict --deep "$app"
+          codesign -dvv "$app" 2>&1 | grep -q '^Timestamp=' || { echo "::error::No secure timestamp on the app"; exit 1; }
+          codesign -dvv "$app" 2>&1 | grep -q 'flags=.*runtime' || { echo "::error::Hardened runtime is off"; exit 1; }
+          if codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q get-task-allow; then
+            echo "::error::The app has com.apple.security.get-task-allow, which notarization rejects"; exit 1
+          fi
+
           echo "$KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
-          xcrun notarytool submit "$DMG" --key "$RUNNER_TEMP/notary.p8" --key-id "$KEY_ID" --issuer "$ISSUER" --wait
+          auth=(--key "$RUNNER_TEMP/notary.p8" --key-id "$KEY_ID" --issuer "$ISSUER")
+          xcrun notarytool submit "$DMG" "${auth[@]}" --wait --output-format json > "$RUNNER_TEMP/notary.json" || true
+          status=$(plutil -extract status raw "$RUNNER_TEMP/notary.json" 2>/dev/null || echo unknown)
+          id=$(plutil -extract id raw "$RUNNER_TEMP/notary.json" 2>/dev/null || true)
+          echo "Notarization $id: $status"
+          if [ "$status" != "Accepted" ]; then
+            echo "::error::Notarization $status"
+            [ -n "$id" ] && xcrun notarytool log "$id" "${auth[@]}"
+            exit 1
+          fi
           xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
 
       - name: Publish the release
         env:

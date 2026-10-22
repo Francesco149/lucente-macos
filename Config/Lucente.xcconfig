@@ -28,6 +28,9 @@ LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
 //   DEVELOPMENT_TEAM = <your team ID>
 CODE_SIGN_ENTITLEMENTS = Config/Lucente.entitlements
 ENABLE_HARDENED_RUNTIME = YES
+// Xcode adds com.apple.security.get-task-allow (debugger attach) to every `xcodebuild build`,
+// and the notary service rejects apps that carry it. Debug builds keep it for the debugger.
+CODE_SIGN_INJECT_BASE_ENTITLEMENTS[config=Release] = NO
 CODE_SIGN_STYLE = Manual
 CODE_SIGN_IDENTITY = -
 DEVELOPMENT_TEAM =
