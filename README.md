@@ -114,13 +114,8 @@ acknowledge writes).
 2. Open it and drag **Lucente** into **Applications**. It runs on macOS 26, on Apple silicon and Intel.
 3. The first launch asks for Bluetooth access. Turn the lights on nearby and they appear on their own.
 
-Releases are currently signed ad hoc rather than notarized, so the first time you open Lucente
-macOS says it can't verify the developer. Go to **System Settings › Privacy & Security**, scroll
-down and click **Open Anyway** — only needed once. Or, in Terminal:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Lucente.app
-```
+Releases are signed with Developer ID and notarized by Apple, so Lucente opens like any other
+app.
 
 **From source** (Xcode 26 or newer, nothing else):
 
