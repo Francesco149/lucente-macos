@@ -8,6 +8,12 @@ the app and the DMG with Developer ID and notarizes them, and Lucente opens like
 You need a paid Apple Developer Program membership, and you must be the team's **Account Holder**
 (only the Account Holder can create Developer ID certificates). It takes about five minutes.
 
+**Already shipping iOS apps on the same team?** The team is shared, but neither piece carries over
+as is. Apple Development and App Store distribution certificates aren't accepted by Gatekeeper
+for apps downloaded from the web; only Developer ID is. And an existing App Store Connect key
+used for other automation (App Manager and up) shouldn't go into this repository's secrets: a key
+here should be able to notarize and nothing else, and be revocable on its own.
+
 ## 1. Create a Developer ID Application certificate
 
 In Xcode:
