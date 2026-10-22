@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Run lucente-probe, the raw Bluetooth workbench (`scripts/probe --help`).
+#
+# The binary is wrapped in a minimal app bundle and launched with `open`, so macOS attributes
+# the Bluetooth permission to the probe itself. A bare binary inherits the permission of
+# whatever launched it (Terminal, an editor, an agent), which may not have Bluetooth access —
+# and gets killed outright if that app has no Bluetooth usage description.
+set -euo pipefail
+
+root="$(cd "$(dirname "$0")/.." && pwd)"
+pkg="$root/Packages/LucenteKit"
+out="$root/.build/probe"
+app="$out/LucenteProbe.app"
+log="$out/output.log"
+
+swift build --package-path "$pkg" -c release --product lucente-probe --quiet
+bin="$(swift build --package-path "$pkg" -c release --show-bin-path)/lucente-probe"
+
+mkdir -p "$app/Contents/MacOS"
+cp "$bin" "$app/Contents/MacOS/lucente-probe"
+cat > "$app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>lucente-probe</string>
+  <key>CFBundleIdentifier</key><string>uk.headpats.lucente.probe</string>
+  <key>CFBundleName</key><string>Lucente Probe</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSUIElement</key><true/>
+  <key>NSBluetoothAlwaysUsageDescription</key><string>Lucente Probe talks to Bluetooth lights for diagnostics.</string>
+</dict>
+</plist>
+PLIST
+# A stable signature keeps the Bluetooth grant across rebuilds; ad-hoc works but re-prompts.
+codesign --force --sign "${LUCENTE_SIGN_IDENTITY:-Apple Development}" "$app" 2>/dev/null \
+  || codesign --force --sign - "$app"
+
+: > "$log"
+tail -f "$log" &
+tailer=$!
+trap 'kill $tailer 2>/dev/null' EXIT
+open -n -W --stdout "$log" --stderr "$log" "$app" --args "$@"
+sleep 0.3

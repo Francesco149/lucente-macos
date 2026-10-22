@@ -1,0 +1,32 @@
+// The Lucente app target.
+
+PRODUCT_NAME = Lucente
+PRODUCT_BUNDLE_IDENTIFIER = uk.headpats.lucente
+MARKETING_VERSION = 1.0
+CURRENT_PROJECT_VERSION = 1
+
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_CFBundleDisplayName = Lucente
+INFOPLIST_KEY_LSApplicationCategoryType = public.app-category.utilities
+INFOPLIST_KEY_NSHumanReadableCopyright = © 2026 headpats. MIT License.
+INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = Lucente uses Bluetooth to find and control your LED strips and bars.
+
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+ENABLE_PREVIEWS = YES
+COMBINE_HIDPI_IMAGES = YES
+SWIFT_EMIT_LOC_STRINGS = YES
+LD_RUNPATH_SEARCH_PATHS = $(inherited) @executable_path/../Frameworks
+
+// Sandboxed and hardened; no provisioning profile is needed for these entitlements.
+// Signed ad hoc by default so a fresh clone builds anywhere. Ad hoc signatures change on every
+// build, so macOS asks for Bluetooth permission again after each rebuild; for a stable signature
+// put your own team in Config/Local.xcconfig (git-ignored):
+//   CODE_SIGN_IDENTITY = Apple Development
+//   DEVELOPMENT_TEAM = <your team ID>
+CODE_SIGN_ENTITLEMENTS = Config/Lucente.entitlements
+ENABLE_HARDENED_RUNTIME = YES
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = -
+DEVELOPMENT_TEAM =
+
+#include? "Local.xcconfig"
