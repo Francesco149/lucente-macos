@@ -47,7 +47,9 @@ private struct DetailHeader<Subtitle: View>: View {
             }
             Spacer()
             if hasPower {
-                Toggle("Power", isOn: Binding(get: { state.power == true }, set: onPower))
+                // A closure literal, not `set: onPower`: passing the function value makes Xcode 26.6
+                // crash emitting its @isolated(any) thunk in optimized Intel builds.
+                Toggle("Power", isOn: Binding(get: { state.power == true }, set: { onPower($0) }))
                     .toggleStyle(.switch)
                     .controlSize(.large)
                     .labelsHidden()

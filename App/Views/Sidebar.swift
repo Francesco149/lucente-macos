@@ -166,7 +166,8 @@ struct PowerToggle: View {
     var set: @MainActor (Bool) -> Void
 
     var body: some View {
-        Toggle("Power", isOn: Binding(get: { isOn }, set: set))
+        // Closure literal on purpose — see DetailHeader (Xcode 26.6 thunk crash).
+        Toggle("Power", isOn: Binding(get: { isOn }, set: { set($0) }))
             .toggleStyle(.switch)
             .controlSize(.mini)
             .labelsHidden()
