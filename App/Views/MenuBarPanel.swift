@@ -23,7 +23,7 @@ struct MenuBarPanel: View {
             Divider()
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     if store.lights.isEmpty {
                         Text(store.availability == .ready ? "Looking for lights…" : "Bluetooth isn't available.")
                             .foregroundStyle(.secondary)
@@ -91,7 +91,7 @@ struct MenuBarPanel: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
-        .frame(width: 320)
+        .frame(width: 330)
     }
 }
 
@@ -103,10 +103,13 @@ private struct PanelHeading: View {
         Text(title)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
-            .padding(.top, 6)
+            .padding(.top, 8)
+            .padding(.bottom, 2)
     }
 }
 
+/// One line per light or group: name, brightness in a fixed column so the sliders line up down
+/// the panel, then the power switch. Off lights keep a disabled slider so rows don't jump around.
 private struct PanelRow: View {
     var state: LightState
     var name: String
@@ -114,23 +117,37 @@ private struct PanelRow: View {
     var available: Bool
     var send: (LightCommand) -> Void
 
+    static let sliderWidth: CGFloat = 104
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 8) {
-                Swatch(state: state, size: 10)
-                Text(name).lineLimit(1)
-                Spacer()
-                if capabilities.contains(.power) {
-                    PowerToggle(isOn: state.power == true) { send(.power($0)) }
+        HStack(spacing: 10) {
+            Swatch(state: state, size: 10)
+            Text(name)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+                if capabilities.contains(.brightness) {
+                    CompactSlider(value: state.brightness ?? 100) { send(.brightness($0)) }
+                        .tint(tint)
+                        .disabled(state.power != true)
+                } else {
+                    Color.clear
                 }
             }
-            if capabilities.contains(.brightness), state.power == true {
-                CompactSlider(value: state.brightness ?? 100) { send(.brightness($0)) }
-                    .padding(.leading, 18)
+            .frame(width: Self.sliderWidth)
+            if capabilities.contains(.power) {
+                PowerToggle(isOn: state.power == true) { send(.power($0)) }
             }
         }
-        .padding(.vertical, 3)
+        .frame(minHeight: 28)
         .opacity(available ? 1 : 0.5)
+    }
+
+    /// The light's own color, unless it's so pale the fill would vanish on a light panel.
+    private var tint: Color {
+        guard state.mode == .color, let rgb = state.color, rgb.hsv.saturation > 0.25 else { return .accentColor }
+        return Color(rgb)
     }
 }
 
@@ -143,7 +160,7 @@ private struct CompactSlider: View {
 
     var body: some View {
         Slider(value: $local, in: 1...100, onEditingChanged: { editing = $0 })
-            .controlSize(.mini)
+            .controlSize(.small)
             .onAppear { local = Double(value) }
             .onChange(of: value) { _, new in if !editing { local = Double(new) } }
             .onChange(of: local) { _, new in if Int(new.rounded()) != value { onChange(Int(new.rounded())) } }

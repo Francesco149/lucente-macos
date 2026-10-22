@@ -55,8 +55,9 @@ Swift 6 · SwiftUI · CoreBluetooth · App Intents · zero third-party dependenc
 
 ### The menu bar panel
 
-Every group and light with its power switch and a brightness slider, the scenes as one-click
-buttons, and a master switch for everything. The status icon fills in while any light is on.
+One line per group and light: its color, a brightness slider tinted to match, and a power
+switch, all lined up in columns. Scenes are one-click buttons, and a master switch covers
+everything. The status icon fills in while any light is on.
 
 With the panel enabled, closing the main window leaves Lucente running in the menu bar without a
 Dock icon.
