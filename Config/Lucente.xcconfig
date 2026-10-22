@@ -5,7 +5,7 @@ PRODUCT_BUNDLE_IDENTIFIER = uk.headpats.lucente
 // Semantic version (MAJOR.MINOR.PATCH[-prerelease]). Bump it with `make release BUMP=…`, which
 // also tags vX.Y.Z; the tag triggers the release workflow. Builds stamp CURRENT_PROJECT_VERSION
 // with the commit count, so every build has a unique, increasing build number.
-MARKETING_VERSION = 1.0.0
+MARKETING_VERSION = 1.0.1
 CURRENT_PROJECT_VERSION = 1
 
 GENERATE_INFOPLIST_FILE = YES
