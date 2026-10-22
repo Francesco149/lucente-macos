@@ -67,8 +67,11 @@ struct Swatch: View {
 }
 
 /// A slider that reports every change while dragging, but doesn't let incoming state updates
-/// yank the thumb out from under the pointer.
+/// yank the thumb out from under the pointer. Labels get a fixed column so stacked sliders
+/// (white, speed, brightness) share one track width.
 struct LevelSlider: View {
+    static let labelWidth: CGFloat = 84
+
     var title: LocalizedStringKey
     var value: Int?
     var range: ClosedRange<Double> = 0...100
@@ -80,7 +83,10 @@ struct LevelSlider: View {
     @State private var editing = false
 
     var body: some View {
-        LabeledContent(title) {
+        HStack(spacing: 8) {
+            Text(title)
+                .lineLimit(1)
+                .frame(width: Self.labelWidth, alignment: .leading)
             HStack(spacing: 8) {
                 Image(systemName: minimumSymbol).foregroundStyle(.secondary).frame(width: 18)
                 Slider(value: $local, in: range, onEditingChanged: { editing = $0 })
@@ -96,6 +102,8 @@ struct LevelSlider: View {
                     .frame(width: 30, alignment: .trailing)
             }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text(title))
         .onAppear { local = Double(value ?? 100) }
         .onChange(of: value) { _, new in if !editing, let new { local = Double(new) } }
     }

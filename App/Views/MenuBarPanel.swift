@@ -91,7 +91,7 @@ struct MenuBarPanel: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
-        .frame(width: 330)
+        .frame(width: 340)
     }
 }
 
@@ -138,6 +138,7 @@ private struct PanelRow: View {
             .frame(width: Self.sliderWidth)
             if capabilities.contains(.power) {
                 PowerToggle(isOn: state.power == true) { send(.power($0)) }
+                    .padding(.leading, 8) // a clear gap so a slider drag never lands on the switch
             }
         }
         .frame(minHeight: 28)
